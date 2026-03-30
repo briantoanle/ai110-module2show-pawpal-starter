@@ -28,6 +28,7 @@
 **a. Constraints and priorities**
 
 - What constraints does your scheduler consider (for example: time, priority, preferences)?
+    - 
 - How did you decide which constraints mattered most?
 
 **b. Tradeoffs**
@@ -42,12 +43,16 @@
 **a. How you used AI**
 
 - How did you use AI tools during this project (for example: design brainstorming, debugging, refactoring)?
+    - It did everything, I just followed the guidelines provided on course page.
 - What kinds of prompts or questions were most helpful?
+    - I used the prompt "Generate a UML diagram for a pet care planning system" to generate the initial UML diagram.
 
 **b. Judgment and verification**
 
 - Describe one moment where you did not accept an AI suggestion as-is.
+    - I found a bug when I would change the pet name but it would modify the previous pet name as well.
 - How did you evaluate or verify what the AI suggested?
+    - I would run the app and check if the pet name was updated correctly.
 
 ---
 
@@ -56,8 +61,9 @@
 **a. What you tested**
 
 - What behaviors did you test?
+    - Adding pets, changing pet name, adding tasks, changing task priority, generating schedule, detecting conflicts.
 - Why were these tests important?
-
+    - It would ensure that the functions work as expected. The edge cases are the best because if one person doesn't find the bug, another person will.
 **b. Confidence**
 
 - How confident are you that your scheduler works correctly?

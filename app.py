@@ -1,5 +1,7 @@
+import json
 import streamlit as st
 from datetime import date, time
+from pathlib import Path
 
 from pawpal_system import Owner, Pet, Task, Priority, Scheduler
 
@@ -7,10 +9,26 @@ st.set_page_config(page_title="PawPal+", page_icon="🐾", layout="centered")
 st.title("🐾 PawPal+")
 
 # ---------------------------------------------------------------------------
+# Persistence helpers
+# ---------------------------------------------------------------------------
+_SAVE_FILE = Path("pawpal_tasks.json")
+
+def _load_tasks() -> list:
+    if _SAVE_FILE.exists():
+        try:
+            return json.loads(_SAVE_FILE.read_text())
+        except (json.JSONDecodeError, OSError):
+            return []
+    return []
+
+def _save_tasks(tasks: list) -> None:
+    _SAVE_FILE.write_text(json.dumps(tasks, indent=2))
+
+# ---------------------------------------------------------------------------
 # Session state
 # ---------------------------------------------------------------------------
 if "tasks" not in st.session_state:
-    st.session_state.tasks = []   # list[dict]: title, duration_min, priority
+    st.session_state.tasks = _load_tasks()
 if "plan" not in st.session_state:
     st.session_state.plan = None  # DailyPlan | None
 
@@ -67,10 +85,12 @@ with col_add:
                 "priority": priority,
                 "frequency": frequency,
             })
+            _save_tasks(st.session_state.tasks)
             st.session_state.plan = None  # invalidate stale plan
 with col_clear:
     if st.button("Clear tasks"):
         st.session_state.tasks = []
+        _save_tasks(st.session_state.tasks)
         st.session_state.plan = None
 
 if st.session_state.tasks:

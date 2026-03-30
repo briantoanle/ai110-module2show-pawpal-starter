@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from enum import Enum
 from typing import ClassVar
 
@@ -43,6 +43,14 @@ class Task:
         self.priority: Priority = priority
         self.frequency: str = frequency      # e.g. "daily", "weekly", "as needed"
         self.completed: bool = completed
+        self.due_date: datetime = self._calculate_due_date()
+
+    def _calculate_due_date(self) -> datetime:
+        """Return the due date based on frequency. Daily tasks are due tomorrow."""
+        today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        if self.frequency == "daily":
+            return today + timedelta(days=1)
+        return today
 
     def is_valid(self) -> bool:
         """Return True if the task has a non-empty title and positive duration."""
@@ -75,11 +83,12 @@ class Task:
 class ScheduledTask:
     """A Task that has been placed at a specific start time in the day."""
 
-    def __init__(self, task: Task, start_min: int, reason: str):
+    def __init__(self, task: Task, start_min: int, reason: str, pet_name: str = ""):
         """Store the wrapped task, its start time in minutes from midnight, and scheduling reason."""
         self.task: Task = task
         self.start_min: int = start_min
         self.reason: str = reason
+        self.pet_name: str = pet_name
 
     def start_time_str(self) -> str:
         """Return the start time as a human-readable string (e.g. '09:00')."""
@@ -339,7 +348,7 @@ class Scheduler:
             if not self._is_due(task, date):
                 plan.add_excluded(ExcludedTask(task, f"Not due today (frequency: {task.frequency})."))
             elif self._fits(task, current_min, owner.available_end_min):
-                plan.add_scheduled(ScheduledTask(task, current_min, self._make_reason(task, current_min)))
+                plan.add_scheduled(ScheduledTask(task, current_min, self._make_reason(task, current_min), pet_name))
                 current_min += task.duration_min
             else:
                 overflow.append(task)
@@ -347,7 +356,7 @@ class Scheduler:
         # Second pass: fill remaining time with tasks that didn't fit earlier.
         for task in overflow:
             if self._fits(task, current_min, owner.available_end_min):
-                plan.add_scheduled(ScheduledTask(task, current_min, self._make_reason(task, current_min)))
+                plan.add_scheduled(ScheduledTask(task, current_min, self._make_reason(task, current_min), pet_name))
                 current_min += task.duration_min
             else:
                 remaining = owner.available_end_min - current_min
@@ -381,6 +390,25 @@ class Scheduler:
     def _make_exclusion_reason(self, task: Task, remaining_min: int) -> str:
         """Return a human-readable reason string for excluding a task."""
         return f"Excluded: needed {task.duration_min} min but only {remaining_min} min remained in the day."
+
+    def detect_conflicts(self, *plans: DailyPlan) -> list[tuple[ScheduledTask, ScheduledTask]]:
+        """Return all pairs of scheduled tasks whose time windows overlap.
+
+        Accepts one or more DailyPlan objects so conflicts can be detected
+        within a single plan or across plans for different pets.
+        Two tasks conflict when one starts before the other ends:
+            a.start < b.end  AND  b.start < a.end
+        """
+        all_tasks: list[ScheduledTask] = [st for plan in plans for st in plan.scheduled]
+        conflicts: list[tuple[ScheduledTask, ScheduledTask]] = []
+        for i in range(len(all_tasks)):
+            for j in range(i + 1, len(all_tasks)):
+                a, b = all_tasks[i], all_tasks[j]
+                a_end = a.start_min + a.task.duration_min
+                b_end = b.start_min + b.task.duration_min
+                if a.start_min < b_end and b.start_min < a_end:
+                    conflicts.append((a, b))
+        return conflicts
 
     @staticmethod
     def filter_tasks(
