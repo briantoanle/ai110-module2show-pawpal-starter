@@ -1,6 +1,9 @@
 # this will be the backend logic of the app
 
+from __future__ import annotations
+
 from enum import Enum
+from typing import ClassVar
 
 
 # ---------------------------------------------------------------------------
@@ -15,8 +18,7 @@ class Priority(Enum):
 
     def numeric_value(self) -> int:
         """Return an integer representation of the priority level."""
-        # TODO: implement (e.g. LOW=1, MEDIUM=2, HIGH=3)
-        pass
+        return {Priority.LOW: 1, Priority.MEDIUM: 2, Priority.HIGH: 3}[self]
 
 
 # ---------------------------------------------------------------------------
@@ -24,21 +26,43 @@ class Priority(Enum):
 # ---------------------------------------------------------------------------
 
 class Task:
-    """A pet-care task with a title, duration, and priority."""
+    """A pet-care task with a title, duration, priority, frequency, and completion status."""
 
-    def __init__(self, title: str, duration_min: int, priority: Priority):
+    def __init__(
+        self,
+        title: str,
+        duration_min: int,
+        priority: Priority,
+        frequency: str = "daily",
+        completed: bool = False,
+    ):
+        """Initialize a Task with title, duration, priority, frequency, and completion status."""
+        if not isinstance(priority, Priority):
+            raise TypeError(
+                f"priority must be a Priority enum member, got {type(priority).__name__!r}"
+            )
         self.title: str = title
         self.duration_min: int = duration_min
         self.priority: Priority = priority
+        self.frequency: str = frequency      # e.g. "daily", "weekly", "as needed"
+        self.completed: bool = completed
 
     def is_valid(self) -> bool:
         """Return True if the task has a non-empty title and positive duration."""
-        # TODO: implement validation logic
-        pass
+        return bool(self.title.strip()) and self.duration_min >= 1 and isinstance(self.priority, Priority)
+
+    def mark_complete(self) -> None:
+        """Mark the task as completed."""
+        self.completed = True
+
+    def mark_incomplete(self) -> None:
+        """Reset the task to incomplete."""
+        self.completed = False
 
     def __repr__(self) -> str:
-        # TODO: implement
-        pass
+        """Return a debug string showing title, duration, priority, frequency, and status."""
+        status = "done" if self.completed else "pending"
+        return f"Task({self.title!r}, {self.duration_min} min, {self.priority.value}, {self.frequency}, {status})"
 
 
 # ---------------------------------------------------------------------------
@@ -49,28 +73,29 @@ class ScheduledTask:
     """A Task that has been placed at a specific start time in the day."""
 
     def __init__(self, task: Task, start_min: int, reason: str):
+        """Store the wrapped task, its start time in minutes from midnight, and scheduling reason."""
         self.task: Task = task
         self.start_min: int = start_min
         self.reason: str = reason
 
     def start_time_str(self) -> str:
         """Return the start time as a human-readable string (e.g. '09:00')."""
-        # TODO: implement (convert minutes-since-midnight to HH:MM)
-        pass
+        return f"{self.start_min // 60:02d}:{self.start_min % 60:02d}"
 
     def end_time_str(self) -> str:
         """Return the end time as a human-readable string (e.g. '09:30')."""
-        # TODO: implement
-        pass
+        end = self.start_min + self.task.duration_min
+        return f"{end // 60:02d}:{end % 60:02d}"
 
-    def duration_min(self) -> int:
+    # Fix #5: renamed from duration_min() to get_duration_min() to avoid
+    # shadowing Task.duration_min (int attribute vs method name collision).
+    def get_duration_min(self) -> int:
         """Return the duration of the wrapped task in minutes."""
-        # TODO: delegate to self.task.duration_min
-        pass
+        return self.task.duration_min
 
     def __repr__(self) -> str:
-        # TODO: implement
-        pass
+        """Return a debug string showing the task title and its scheduled time window."""
+        return f"ScheduledTask({self.task.title!r}, {self.start_time_str()}–{self.end_time_str()})"
 
 
 # ---------------------------------------------------------------------------
@@ -81,12 +106,13 @@ class ExcludedTask:
     """A Task that could not be scheduled, along with the reason why."""
 
     def __init__(self, task: Task, reason: str):
+        """Store the task that was excluded and the reason it could not be scheduled."""
         self.task: Task = task
         self.reason: str = reason
 
     def __repr__(self) -> str:
-        # TODO: implement
-        pass
+        """Return a debug string showing the excluded task title and reason."""
+        return f"ExcludedTask({self.task.title!r}, reason={self.reason!r})"
 
 
 # ---------------------------------------------------------------------------
@@ -96,40 +122,64 @@ class ExcludedTask:
 class DailyPlan:
     """The full schedule for a single day, including scheduled and excluded tasks."""
 
-    def __init__(self, date: str, total_available_min: int):
+    # Fix #2 & #4: added owner_name and pet_name so each plan retains context
+    # about who and which pet it was built for.
+    def __init__(
+        self,
+        date: str,
+        total_available_min: int,
+        owner_name: str = "",
+        pet_name: str = "",
+    ):
+        """Initialize an empty daily plan for the given date and available time window."""
         self.date: str = date
         self.total_available_min: int = total_available_min
+        self.owner_name: str = owner_name  # Fix #2
+        self.pet_name: str = pet_name       # Fix #4
         self.scheduled: list[ScheduledTask] = []
         self.excluded: list[ExcludedTask] = []
 
     def add_scheduled(self, st: ScheduledTask) -> None:
         """Append a ScheduledTask to the scheduled list."""
-        # TODO: implement
-        pass
+        self.scheduled.append(st)
 
     def add_excluded(self, et: ExcludedTask) -> None:
         """Append an ExcludedTask to the excluded list."""
-        # TODO: implement
-        pass
+        self.excluded.append(et)
 
     def total_used_min(self) -> int:
         """Return the sum of minutes used by all scheduled tasks."""
-        # TODO: implement
-        pass
+        return sum(st.get_duration_min() for st in self.scheduled)
 
     def utilization_pct(self) -> float:
-        """Return the percentage of available time that is used (0–100)."""
-        # TODO: implement (total_used_min / total_available_min * 100)
-        pass
+        """Return the percentage of available time used (0–100), or 0.0 if no time is available."""
+        if self.total_available_min == 0:
+            return 0.0
+        return self.total_used_min() / self.total_available_min * 100
 
     def summary(self) -> str:
         """Return a human-readable summary of the daily plan."""
-        # TODO: implement
-        pass
+        lines = [f"Daily Plan for {self.pet_name} ({self.date}) — Owner: {self.owner_name}",
+                 f"Available: {self.total_available_min} min | Used: {self.total_used_min()} min "
+                 f"({self.utilization_pct():.1f}%)", ""]
+        if self.scheduled:
+            lines.append("Scheduled tasks:")
+            for st in self.scheduled:
+                lines.append(f"  {st.start_time_str()}–{st.end_time_str()}  {st.task.title} "
+                             f"[{st.task.priority.value}]  — {st.reason}")
+        else:
+            lines.append("No tasks could be scheduled.")
+        if self.excluded:
+            lines.append("")
+            lines.append("Excluded tasks:")
+            for et in self.excluded:
+                lines.append(f"  {et.task.title} — {et.reason}")
+        return "\n".join(lines)
 
     def __repr__(self) -> str:
-        # TODO: implement
-        pass
+        """Return a debug string showing the date and counts of scheduled and excluded tasks."""
+        return (f"DailyPlan(date={self.date!r}, scheduled={len(self.scheduled)}, "
+                f"excluded={len(self.excluded)})")
 
 
 # ---------------------------------------------------------------------------
@@ -137,17 +187,35 @@ class DailyPlan:
 # ---------------------------------------------------------------------------
 
 class Pet:
-    """Represents a pet owned by an Owner."""
+    """Represents a pet owned by an Owner, with its own list of care tasks."""
 
     def __init__(self, name: str, species: str, age_years: float, notes: str = ""):
+        """Initialize a Pet with identifying details and an empty task list."""
         self.name: str = name
         self.species: str = species
         self.age_years: float = age_years
         self.notes: str = notes
+        self.tasks: list[Task] = []
+
+    def add_task(self, task: Task) -> None:
+        """Add a care task to this pet."""
+        self.tasks.append(task)
+
+    def remove_task(self, title: str) -> None:
+        """Remove a task by title. Raises ValueError if not found."""
+        for i, t in enumerate(self.tasks):
+            if t.title == title:
+                self.tasks.pop(i)
+                return
+        raise ValueError(f"No task with title {title!r} found for pet {self.name!r}.")
+
+    def get_pending_tasks(self) -> list[Task]:
+        """Return all tasks that are not yet completed."""
+        return [t for t in self.tasks if not t.completed]
 
     def __repr__(self) -> str:
-        # TODO: implement
-        pass
+        """Return a debug string showing the pet's name, species, age, and task count."""
+        return f"Pet({self.name!r}, species={self.species!r}, age={self.age_years}, tasks={len(self.tasks)})"
 
 
 # ---------------------------------------------------------------------------
@@ -158,6 +226,14 @@ class Owner:
     """Represents the pet owner with their available time window and list of pets."""
 
     def __init__(self, name: str, available_start_min: int, available_end_min: int):
+        """Initialize an Owner with a name, available time window (minutes from midnight), and empty pet list."""
+        # Fix #7: guard against an inverted or midnight-spanning time window
+        if available_start_min >= available_end_min:
+            raise ValueError(
+                f"available_start_min ({available_start_min}) must be less than "
+                f"available_end_min ({available_end_min}). "
+                "Midnight-spanning windows (e.g. 22:00–02:00) are not supported."
+            )
         self.name: str = name
         self.available_start_min: int = available_start_min
         self.available_end_min: int = available_end_min
@@ -165,17 +241,26 @@ class Owner:
 
     def add_pet(self, pet: Pet) -> None:
         """Add a Pet to this owner's pet list."""
-        # TODO: implement
-        pass
+        self.pets.append(pet)
+
+    def get_all_tasks(self) -> list[Task]:
+        """Return all tasks across all pets."""
+        return [task for pet in self.pets for task in pet.tasks]
+
+    def get_tasks_for_pet(self, pet_name: str) -> list[Task]:
+        """Return all tasks for a specific pet by name. Raises ValueError if not found."""
+        for pet in self.pets:
+            if pet.name == pet_name:
+                return pet.tasks
+        raise ValueError(f"No pet named {pet_name!r} found.")
 
     def total_available_min(self) -> int:
         """Return the total number of available minutes in the owner's window."""
-        # TODO: implement (available_end_min - available_start_min)
-        pass
+        return self.available_end_min - self.available_start_min
 
     def __repr__(self) -> str:
-        # TODO: implement
-        pass
+        """Return a debug string showing the owner's name, time window, and pet count."""
+        return f"Owner({self.name!r}, {self.available_start_min}–{self.available_end_min} min, pets={len(self.pets)})"
 
 
 # ---------------------------------------------------------------------------
@@ -185,38 +270,52 @@ class Owner:
 class Scheduler:
     """Builds a DailyPlan by scheduling tasks within an owner's available window."""
 
-    _PRIORITY_ORDER: dict = {
+    # Fix #9: annotated as ClassVar so type checkers flag accidental instance
+    # mutation; treated as a read-only constant.
+    _PRIORITY_ORDER: ClassVar[dict] = {
         Priority.HIGH: 0,
         Priority.MEDIUM: 1,
         Priority.LOW: 2,
     }
 
-    def build_plan(self, owner: Owner, pet: Pet, tasks: list, date: str) -> DailyPlan:
-        """
-        Create and return a DailyPlan for the given owner, pet, tasks, and date.
+    def build_plan(self, owner: Owner, date: str, pet: Pet | None = None) -> DailyPlan:
+        """Schedule pending tasks for one pet (or all pets) into the owner's available time window."""
+        if pet is not None:
+            if pet not in owner.pets:
+                raise ValueError(
+                    f"Pet {pet.name!r} does not belong to owner {owner.name!r}. "
+                    "Add the pet via owner.add_pet() before scheduling."
+                )
+            pet_name = pet.name
+            tasks = pet.get_pending_tasks()
+        else:
+            pet_name = "all pets"
+            tasks = [t for t in owner.get_all_tasks() if not t.completed]
 
-        Tasks are sorted by priority (high → low) and greedily scheduled into
-        the owner's available window. Tasks that don't fit are excluded.
-        """
-        # TODO: implement
-        pass
+        plan = DailyPlan(date, owner.total_available_min(), owner.name, pet_name)
+        current_min = owner.available_start_min
+        for task in self._sort_tasks(tasks):
+            if self._fits(task, current_min, owner.available_end_min):
+                plan.add_scheduled(ScheduledTask(task, current_min, self._make_reason(task, current_min)))
+                current_min += task.duration_min
+            else:
+                remaining = owner.available_end_min - current_min
+                plan.add_excluded(ExcludedTask(task, self._make_exclusion_reason(task, remaining)))
+        return plan
 
-    def _sort_tasks(self, tasks: list) -> list:
-        """Return a new list of tasks sorted by priority (high first)."""
-        # TODO: implement using _PRIORITY_ORDER
-        pass
+    def _sort_tasks(self, tasks: list[Task]) -> list[Task]:
+        """Return tasks sorted by priority descending, then duration ascending, then title for determinism."""
+        return sorted(tasks, key=lambda t: (self._PRIORITY_ORDER[t.priority], t.duration_min, t.title))
 
     def _fits(self, task: Task, current_min: int, end_min: int) -> bool:
         """Return True if the task can start at current_min and finish before end_min."""
-        # TODO: implement
-        pass
+        return task.duration_min <= (end_min - current_min)
 
     def _make_reason(self, task: Task, start_min: int) -> str:
         """Return a human-readable reason string for scheduling a task at start_min."""
-        # TODO: implement
-        pass
+        h, m = divmod(start_min, 60)
+        return f"Scheduled at {h:02d}:{m:02d} ({task.duration_min} min). {task.priority.value.capitalize()} priority."
 
     def _make_exclusion_reason(self, task: Task, remaining_min: int) -> str:
         """Return a human-readable reason string for excluding a task."""
-        # TODO: implement
-        pass
+        return f"Excluded: needed {task.duration_min} min but only {remaining_min} min remained in the day."

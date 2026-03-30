@@ -5,7 +5,16 @@
 **a. Initial design**
 
 - Briefly describe your initial UML design.
+  - I created a UML diagram that includes the following classes: Priority, Task, ScheduledTask, ExcludedTask, DailyPlan, Pet, Owner, and Scheduler.
 - What classes did you include, and what responsibilities did you assign to each?
+  - Priority: An enumeration of task priority levels.
+  - Task: A pet-care task with a title, duration, and priority.
+  - ScheduledTask: A Task that has been placed at a specific start time in the day.
+  - ExcludedTask: A Task that could not be scheduled, along with the reason why.
+  - DailyPlan: The full schedule for a single day, including scheduled and excluded tasks.
+  - Pet: Represents a pet owned by an Owner.
+  - Owner: Represents the pet owner with their available time window and list of pets.
+  - Scheduler: Builds a DailyPlan by scheduling tasks within an owner's available window.
 
 **b. Design changes**
 
