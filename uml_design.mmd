@@ -1,0 +1,85 @@
+classDiagram
+    class Priority {
+        <<enumeration>>
+        LOW
+        MEDIUM
+        HIGH
+        +numeric_value() int
+    }
+
+    class Task {
+        +str title
+        +int duration_min
+        +Priority priority
+        +is_valid() bool
+        +__repr__() str
+    }
+
+    class ScheduledTask {
+        +Task task
+        +int start_min
+        +str reason
+        +start_time_str() str
+        +end_time_str() str
+        +duration_min() int
+        +__repr__() str
+    }
+
+    class ExcludedTask {
+        +Task task
+        +str reason
+        +__repr__() str
+    }
+
+    class DailyPlan {
+        +str date
+        +list~ScheduledTask~ scheduled
+        +list~ExcludedTask~ excluded
+        +int total_available_min
+        +add_scheduled(st: ScheduledTask) None
+        +add_excluded(et: ExcludedTask) None
+        +total_used_min() int
+        +utilization_pct() float
+        +summary() str
+        +__repr__() str
+    }
+
+    class Pet {
+        +str name
+        +str species
+        +float age_years
+        +str notes
+        +__repr__() str
+    }
+
+    class Owner {
+        +str name
+        +int available_start_min
+        +int available_end_min
+        +list~Pet~ pets
+        +add_pet(pet: Pet) None
+        +total_available_min() int
+        +__repr__() str
+    }
+
+    class Scheduler {
+        -dict _PRIORITY_ORDER
+        +build_plan(owner: Owner, pet: Pet, tasks: list, date: str) DailyPlan
+        -_sort_tasks(tasks: list) list
+        -_fits(task: Task, current_min: int, end_min: int) bool
+        -_make_reason(task: Task, start_min: int) str
+        -_make_exclusion_reason(task: Task, remaining_min: int) str
+    }
+
+    Owner "1" *-- "1..*" Pet : owns
+    DailyPlan "1" *-- "0..*" ScheduledTask : contains
+    DailyPlan "1" *-- "0..*" ExcludedTask : contains
+    ScheduledTask --> Task : wraps
+    ExcludedTask --> Task : references
+    Task --> Priority : uses
+    Scheduler ..> Owner : depends on
+    Scheduler ..> Pet : depends on
+    Scheduler ..> Task : depends on
+    Scheduler ..> DailyPlan : creates
+    Scheduler ..> ScheduledTask : creates
+    Scheduler ..> ExcludedTask : creates
