@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from enum import Enum
 from typing import ClassVar
 
@@ -15,10 +16,6 @@ class Priority(Enum):
     LOW = "LOW"
     MEDIUM = "MEDIUM"
     HIGH = "HIGH"
-
-    def numeric_value(self) -> int:
-        """Return an integer representation of the priority level."""
-        return {Priority.LOW: 1, Priority.MEDIUM: 2, Priority.HIGH: 3}[self]
 
 
 # ---------------------------------------------------------------------------
@@ -54,6 +51,12 @@ class Task:
     def mark_complete(self) -> None:
         """Mark the task as completed."""
         self.completed = True
+
+    def next_occurrence(self) -> "Task | None":
+        """Return a new incomplete Task for the next occurrence, or None if frequency is 'as needed'."""
+        if self.frequency in ("daily", "weekly"):
+            return Task(self.title, self.duration_min, self.priority, self.frequency)
+        return None
 
     def mark_incomplete(self) -> None:
         """Reset the task to incomplete."""
@@ -138,10 +141,12 @@ class DailyPlan:
         self.pet_name: str = pet_name       # Fix #4
         self.scheduled: list[ScheduledTask] = []
         self.excluded: list[ExcludedTask] = []
+        self._used_min: int = 0
 
     def add_scheduled(self, st: ScheduledTask) -> None:
         """Append a ScheduledTask to the scheduled list."""
         self.scheduled.append(st)
+        self._used_min += st.get_duration_min()
 
     def add_excluded(self, et: ExcludedTask) -> None:
         """Append an ExcludedTask to the excluded list."""
@@ -149,7 +154,7 @@ class DailyPlan:
 
     def total_used_min(self) -> int:
         """Return the sum of minutes used by all scheduled tasks."""
-        return sum(st.get_duration_min() for st in self.scheduled)
+        return self._used_min
 
     def utilization_pct(self) -> float:
         """Return the percentage of available time used (0–100), or 0.0 if no time is available."""
@@ -176,6 +181,27 @@ class DailyPlan:
                 lines.append(f"  {et.task.title} — {et.reason}")
         return "\n".join(lines)
 
+    def detect_conflicts(self) -> list[tuple[ScheduledTask, ScheduledTask]]:
+        """Return pairs of ScheduledTasks whose time windows overlap.
+
+        Because the greedy scheduler places tasks sequentially this should
+        always be empty, but the check is useful as a safety net when tasks
+        are added to the plan manually or via future scheduling strategies.
+        """
+        conflicts: list[tuple[ScheduledTask, ScheduledTask]] = []
+        by_time = sorted(self.scheduled, key=lambda s: s.start_min)
+        for i in range(len(by_time) - 1):
+            a = by_time[i]
+            a_end = a.start_min + a.task.duration_min
+            b = by_time[i + 1]
+            if b.start_min < a_end:
+                conflicts.append((a, b))
+        return conflicts
+
+    def scheduled_by_time(self) -> list[ScheduledTask]:
+        """Return scheduled tasks sorted by start time ascending."""
+        return sorted(self.scheduled, key=lambda s: s.start_min)
+
     def __repr__(self) -> str:
         """Return a debug string showing the date and counts of scheduled and excluded tasks."""
         return (f"DailyPlan(date={self.date!r}, scheduled={len(self.scheduled)}, "
@@ -198,7 +224,9 @@ class Pet:
         self.tasks: list[Task] = []
 
     def add_task(self, task: Task) -> None:
-        """Add a care task to this pet."""
+        """Add a care task to this pet. Raises ValueError if a task with the same title already exists."""
+        if any(t.title == task.title for t in self.tasks):
+            raise ValueError(f"Task {task.title!r} already exists for pet {self.name!r}.")
         self.tasks.append(task)
 
     def remove_task(self, title: str) -> None:
@@ -208,6 +236,17 @@ class Pet:
                 self.tasks.pop(i)
                 return
         raise ValueError(f"No task with title {title!r} found for pet {self.name!r}.")
+
+    def complete_task(self, title: str) -> None:
+        """Mark a task complete by title and re-queue it if it recurs (daily/weekly)."""
+        for task in self.tasks:
+            if task.title == title and not task.completed:
+                task.mark_complete()
+                next_task = task.next_occurrence()
+                if next_task is not None:
+                    self.tasks.append(next_task)
+                return
+        raise ValueError(f"No pending task with title {title!r} found for pet {self.name!r}.")
 
     def get_pending_tasks(self) -> list[Task]:
         """Return all tasks that are not yet completed."""
@@ -294,13 +333,26 @@ class Scheduler:
 
         plan = DailyPlan(date, owner.total_available_min(), owner.name, pet_name)
         current_min = owner.available_start_min
+        overflow: list[Task] = []
+
         for task in self._sort_tasks(tasks):
+            if not self._is_due(task, date):
+                plan.add_excluded(ExcludedTask(task, f"Not due today (frequency: {task.frequency})."))
+            elif self._fits(task, current_min, owner.available_end_min):
+                plan.add_scheduled(ScheduledTask(task, current_min, self._make_reason(task, current_min)))
+                current_min += task.duration_min
+            else:
+                overflow.append(task)
+
+        # Second pass: fill remaining time with tasks that didn't fit earlier.
+        for task in overflow:
             if self._fits(task, current_min, owner.available_end_min):
                 plan.add_scheduled(ScheduledTask(task, current_min, self._make_reason(task, current_min)))
                 current_min += task.duration_min
             else:
                 remaining = owner.available_end_min - current_min
                 plan.add_excluded(ExcludedTask(task, self._make_exclusion_reason(task, remaining)))
+
         return plan
 
     def _sort_tasks(self, tasks: list[Task]) -> list[Task]:
@@ -316,6 +368,35 @@ class Scheduler:
         h, m = divmod(start_min, 60)
         return f"Scheduled at {h:02d}:{m:02d} ({task.duration_min} min). {task.priority.value.capitalize()} priority."
 
+    def _is_due(self, task: Task, date_str: str) -> bool:
+        """Return True if the task is due on the given date based on its frequency.
+
+        - 'daily' and 'as needed': always due.
+        - 'weekly': due only on Mondays (weekday == 0).
+        """
+        if task.frequency == "weekly":
+            return datetime.strptime(date_str, "%Y-%m-%d").weekday() == 0
+        return True
+
     def _make_exclusion_reason(self, task: Task, remaining_min: int) -> str:
         """Return a human-readable reason string for excluding a task."""
         return f"Excluded: needed {task.duration_min} min but only {remaining_min} min remained in the day."
+
+    @staticmethod
+    def filter_tasks(
+        tasks: list[Task],
+        priority: Priority | None = None,
+        completed: bool | None = None,
+    ) -> list[Task]:
+        """Return tasks filtered by optional priority and/or completion status.
+
+        Pass ``priority=Priority.HIGH`` to keep only high-priority tasks.
+        Pass ``completed=False`` to keep only pending tasks.
+        Omit a parameter (or pass ``None``) to skip that filter.
+        """
+        result = tasks
+        if priority is not None:
+            result = [t for t in result if t.priority == priority]
+        if completed is not None:
+            result = [t for t in result if t.completed == completed]
+        return result
