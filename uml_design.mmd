@@ -4,14 +4,20 @@ classDiagram
         LOW
         MEDIUM
         HIGH
-        +numeric_value() int
     }
 
     class Task {
         +str title
         +int duration_min
         +Priority priority
+        +str frequency
+        +bool completed
+        +datetime due_date
         +is_valid() bool
+        +mark_complete() None
+        +mark_incomplete() None
+        +next_occurrence() Task
+        -_calculate_due_date() datetime
         +__repr__() str
     }
 
@@ -19,9 +25,10 @@ classDiagram
         +Task task
         +int start_min
         +str reason
+        +str pet_name
         +start_time_str() str
         +end_time_str() str
-        +duration_min() int
+        +get_duration_min() int
         +__repr__() str
     }
 
@@ -33,14 +40,19 @@ classDiagram
 
     class DailyPlan {
         +str date
+        +int total_available_min
+        +str owner_name
+        +str pet_name
         +list~ScheduledTask~ scheduled
         +list~ExcludedTask~ excluded
-        +int total_available_min
+        -int _used_min
         +add_scheduled(st: ScheduledTask) None
         +add_excluded(et: ExcludedTask) None
         +total_used_min() int
         +utilization_pct() float
         +summary() str
+        +detect_conflicts() list
+        +scheduled_by_time() list
         +__repr__() str
     }
 
@@ -49,6 +61,11 @@ classDiagram
         +str species
         +float age_years
         +str notes
+        +list~Task~ tasks
+        +add_task(task: Task) None
+        +remove_task(title: str) None
+        +complete_task(title: str) None
+        +get_pending_tasks() list
         +__repr__() str
     }
 
@@ -58,20 +75,26 @@ classDiagram
         +int available_end_min
         +list~Pet~ pets
         +add_pet(pet: Pet) None
+        +get_all_tasks() list
+        +get_tasks_for_pet(pet_name: str) list
         +total_available_min() int
         +__repr__() str
     }
 
     class Scheduler {
         -dict _PRIORITY_ORDER
-        +build_plan(owner: Owner, pet: Pet, tasks: list, date: str) DailyPlan
+        +build_plan(owner: Owner, date: str, pet: Pet) DailyPlan
+        +detect_conflicts(plans: DailyPlan) list
+        +filter_tasks(tasks: list, priority: Priority, completed: bool) list$
         -_sort_tasks(tasks: list) list
         -_fits(task: Task, current_min: int, end_min: int) bool
+        -_is_due(task: Task, date_str: str) bool
         -_make_reason(task: Task, start_min: int) str
         -_make_exclusion_reason(task: Task, remaining_min: int) str
     }
 
     Owner "1" *-- "1..*" Pet : owns
+    Pet "1" *-- "0..*" Task : has
     DailyPlan "1" *-- "0..*" ScheduledTask : contains
     DailyPlan "1" *-- "0..*" ExcludedTask : contains
     ScheduledTask --> Task : wraps

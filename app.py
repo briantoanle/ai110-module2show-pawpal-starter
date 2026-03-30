@@ -100,8 +100,25 @@ if st.session_state.tasks:
         default=["HIGH", "MEDIUM", "LOW"],
         key="filter_priorities",
     )
-    displayed = [t for t in st.session_state.tasks if t["priority"] in filter_priorities]
-    st.dataframe(displayed, use_container_width=True)
+    _PRIORITY_ORDER = {"HIGH": 0, "MEDIUM": 1, "LOW": 2}
+    _PRIORITY_ICON = {"HIGH": "🔴 HIGH", "MEDIUM": "🟡 MEDIUM", "LOW": "🟢 LOW"}
+    displayed = sorted(
+        [t for t in st.session_state.tasks if t["priority"] in filter_priorities],
+        key=lambda t: (_PRIORITY_ORDER.get(t["priority"], 9), t["duration_min"], t["title"]),
+    )
+    if displayed:
+        table_rows = [
+            {
+                "Priority": _PRIORITY_ICON.get(t["priority"], t["priority"]),
+                "Title": t["title"],
+                "Duration (min)": t["duration_min"],
+                "Frequency": t["frequency"],
+            }
+            for t in displayed
+        ]
+        st.table(table_rows)
+    else:
+        st.info("No tasks match the selected priorities.")
 else:
     st.info("No tasks yet. Add one above.")
 
@@ -145,13 +162,23 @@ if st.session_state.plan:
     col2.metric("Used", f"{plan.total_used_min()} min")
     col3.metric("Utilization", f"{plan.utilization_pct():.1f}%")
 
-    conflicts = plan.detect_conflicts()
+    util = plan.utilization_pct()
+    if util <= 75:
+        st.success(f"Schedule looks good — {util:.1f}% of available time used.")
+    elif util <= 95:
+        st.warning(f"Schedule is fairly full — {util:.1f}% of available time used.")
+    else:
+        st.error(f"Schedule is over-packed — {util:.1f}% of available time used.")
+
+    conflicts = Scheduler().detect_conflicts(plan)
     if conflicts:
         for a, b in conflicts:
             st.warning(
                 f"Conflict: **{a.task.title}** ({a.start_time_str()}–{a.end_time_str()}) "
                 f"overlaps **{b.task.title}** ({b.start_time_str()}–{b.end_time_str()})"
             )
+    else:
+        st.success("No scheduling conflicts detected.")
 
     if plan.scheduled:
         st.markdown("### Scheduled Tasks *(sorted by time)*")
@@ -171,7 +198,7 @@ if st.session_state.plan:
     if plan.excluded:
         st.markdown("### Excluded Tasks")
         for et in plan.excluded:
-            st.markdown(f"- **{et.task.title}** — {et.reason}")
+            st.warning(f"**{et.task.title}** — {et.reason}")
 
     with st.expander("Full plan summary"):
         st.text(plan.summary())

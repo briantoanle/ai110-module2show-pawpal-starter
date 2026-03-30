@@ -6,13 +6,7 @@
     "frequency": "daily"
   },
   {
-    "title": "Morning wa2",
-    "duration_min": 20,
-    "priority": "HIGH",
-    "frequency": "daily"
-  },
-  {
-    "title": "Morning was",
+    "title": "Afternoon Walk",
     "duration_min": 20,
     "priority": "HIGH",
     "frequency": "daily"
